@@ -6,7 +6,7 @@
 
 % http://en.wikipedia.org/wiki/Token_bucket
 
--export([start/0, check_rate/3]).
+-export([start/0, check_rate/3, lookup_rate/3]).
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
          code_change/3, terminate/2]).
 
@@ -32,6 +32,9 @@ start_ok(App, {error, {not_started, Dep}}) ->
 start_ok(App, {error, Reason}) ->
     erlang:error({app_start_failed, App, Reason}).
 
+lookup_rate(Id, Scale, Limit) ->
+  gen_server:call(raterlimiter, {lookup, Id, Scale, Limit}).
+
 check_rate(Id, Scale, Limit) ->
   gen_server:call(raterlimiter, {Id, Scale, Limit}).
 
@@ -49,6 +52,19 @@ init(_) ->
     timer:send_interval(Rate, interval),
     {ok, #raterlimiter{timeout=Timeout, cleanup_rate=Rate}}.
 
+handle_call({lookup, Id, Scale, Limit}, _From, State) ->
+  Stamp = timestamp(),                    %% milliseconds since 00:00 GMT, January 1, 1970
+  BucketNumber = trunc(Stamp / Scale),    %% with scale=1 bucket changes every millisecond
+  Key = {BucketNumber, Id},
+  Reply = case ets:lookup(?RATERLIMITER_TABLE, Key) of
+    [] ->
+      {ok, continue};
+    [{_,BucketSize,_,_}] when BucketSize > Limit ->
+      {fail, Limit};
+    [{_,_BucketSize,_,_}] ->
+      {ok, continue}
+  end,
+  {reply, Reply, State};
 handle_call({Client, Scale, Limit}, _From, State) ->
     Result = count_hit(Client, Scale, Limit),
     {reply, Result,  State};
@@ -112,7 +128,7 @@ remove_old_limiters(Timeout) ->
 -spec timestamp() -> Timstamp::integer().
 %% @doc Returns now() as milliseconds
 timestamp() ->
-  timestamp(now()).
+  timestamp(erlang:timestamp()).
 
 -spec timestamp({Mega::integer(), Secs::integer(), Micro::integer()}) -> Timestamp::integer().
 %% @doc returns Erlang Time as milliseconds

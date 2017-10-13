@@ -47,7 +47,7 @@ init(_) ->
     {ok, Rate} = application:get_env(raterlimiter, cleanup_rate),
     io:format("Starting Raterlimiter with Timeout ~p, Cleanup every ~p milliseconds ~n",[Timeout, Rate]),
 
-    ets:new(?RATERLIMITER_TABLE, [named_table, ordered_set, private]),
+    ets:new(?RATERLIMITER_TABLE, [named_table, ordered_set, public]),
 
     timer:send_interval(Rate, interval),
     {ok, #raterlimiter{timeout=Timeout, cleanup_rate=Rate}}.
